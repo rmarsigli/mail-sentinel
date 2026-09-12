@@ -1,0 +1,7 @@
+Sep 11 20:24:06 host dovecot[304665]: imap-login: Logged in: user=<user@example.com>, method=PLAIN, rip=203.0.113.10, lip=198.51.100.5, mpid=305201, TLS, session=<xnBvYT1bWIJ/AAAB>
+Sep 11 20:24:07 host dovecot[304665]: pop3-login: Logged in: user=<pop@example.com>, method=PLAIN, rip=203.0.113.11, lip=198.51.100.5, mpid=305202, TLS, session=<abc>
+Sep 11 20:23:10 host dovecot[304665]: imap-login: Login aborted: Logged out (auth failed, 1 attempts in 6 secs) (auth_failed): user=<user@example.com>, method=PLAIN, rip=203.0.113.10, lip=198.51.100.5, TLS, session=<osG6XT1bPD9ni7Lu>
+Sep 11 20:23:12 host dovecot[304665]: imap-login: Login aborted: Connection closed (auth failed, 3 attempts in 12 secs) (auth_failed): user=<victim@example.com>, method=PLAIN, rip=203.0.113.99, lip=198.51.100.5, TLS, session=<zzz>
+Sep 11 20:23:13 host dovecot[304665]: imap-login: Login aborted: Too many invalid commands (no auth attempts in 3 secs): rip=203.0.113.50, lip=198.51.100.5, TLS, session=<qqq>
+Sep 11 20:24:06 host dovecot[304665]: imap(user@example.com)<305201><xnBvYT1bWIJ/AAAB>: Disconnected: Logged out in=100 out=200 deleted=0 expunged=0 trashed=0 hdr_count=0
+Sep 11 20:25:00 host systemd[1]: Started something unrelated.

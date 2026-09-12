@@ -1,0 +1,6 @@
+2026-09-11 19:40:22 dovecot_login authenticator failed for H=host.example [203.0.113.10]:62336: 535 Incorrect authentication data (set_id=user@example.com)
+2026-09-11 19:48:18 1x5A2c-00000001JJQ-23c2 <= user@example.com H=host.example [203.0.113.10]:59196 P=esmtpa A=dovecot_login:user@example.com S=657 id=ID T="SUBJECT" for dest@example.net
+2026-09-11 19:49:00 1x5A2d-00000001JJR-11aa <= forged@example.org H=(client) [203.0.113.10]:59197 P=esmtpsa A=dovecot_plain:webmail@example.com S=900 id=ID2 T="SUBJECT" for a@example.net b@example.net
+2026-09-11 16:47:01 1x57DB-00000001Awk-36y4 <= root@host.example U=root P=local S=2725 T="SUBJECT" for root@host.example
+2026-09-11 19:48:19 1x5A2c-00000001JJQ-23c2 => dest@example.net R=dkim_lookuphost T=dkim_remote_smtp H=mx.example.net [198.51.100.9] C="250 OK"
+2026-09-11 19:50:00 SMTP connection from [203.0.113.77]:1234 (TCP/IP connection count = 1)
