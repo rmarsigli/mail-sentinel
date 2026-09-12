@@ -1,0 +1,36 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          # The interpreter the servers run. A release is not allowed to be
+          # green on a newer one and broken on that.
+          python-version: "3.9"
+      - name: suite, smoke and the cron wrapper
+        run: bash scripts/smoke.sh
+        env:
+          PYTHON: python
+      - name: nothing deployment-specific in the tarball
+        run: bash scripts/check-no-secrets.sh
+      - name: build, checking the tag against the tree
+        run: bash scripts/release.sh "${GITHUB_REF_NAME}"
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/mail-sentinel-${version}.tar.gz" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file "dist/notes-${version}.md"

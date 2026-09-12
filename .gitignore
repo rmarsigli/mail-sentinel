@@ -11,3 +11,4 @@ __pycache__/
 # Editor / OS
 *.swp
 *:Zone.Identifier
+dist/
