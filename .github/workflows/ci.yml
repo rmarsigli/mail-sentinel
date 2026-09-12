@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    name: suite (python ${{ matrix.python }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 3.9 is what the production server runs. It is the one that must stay
+          # green; if a runner image stops shipping it, pin this entry further
+          # back rather than dropping the version.
+          - {python: "3.9", runner: ubuntu-22.04}
+          - {python: "3.11", runner: ubuntu-latest}
+          - {python: "3.13", runner: ubuntu-latest}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: unit tests
+        run: python -m unittest discover -s tests -v
+      - name: smoke, including the cron wrapper
+        run: bash scripts/smoke.sh
+        env:
+          PYTHON: python
+
+  shell:
+    name: shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck scripts/*.sh
+      - name: posix syntax of the wrapper cron runs
+        run: sh -n scripts/run-cycle.sh
+
+  secrets:
+    name: nothing deployment-specific
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: bash scripts/check-no-secrets.sh

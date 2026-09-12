@@ -1,5 +1,14 @@
 # Install
 
+`scripts/deploy.sh <ssh-host>` does steps 1 and 6 through 8 for an existing install, and
+shows a dry run until you add `--apply`. The steps below are what it automates, and what
+you do the first time.
+
+Deployment runs from a workstation, never from CI. Automating it would mean putting an
+SSH key that is root on a mail server into a CI provider's secret store, which trades a
+manual `rsync` for a credential that grants root on the very box this project exists to
+watch. Not a trade worth making for a project that deploys by copying a directory.
+
 Everything runs as root on the mail server. Nothing is installed system-wide and nothing comes from pip; the tree lives in `/opt/mail-sentinel`.
 
 1. Copy the repository to the server, then make root own it:
