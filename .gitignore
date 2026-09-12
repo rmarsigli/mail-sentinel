@@ -1,0 +1,13 @@
+# Deployment-specific notes and secrets: never published
+local/
+*.key
+*.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Editor / OS
+*.swp
+*:Zone.Identifier
