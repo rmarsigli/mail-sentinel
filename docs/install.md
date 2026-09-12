@@ -114,6 +114,56 @@ would mean offsetting their schedules so they cannot race, and writing the run's
 code to a file for the second one to read, which is a local reimplementation of the
 freshness check the monitor already does remotely.
 
+## Updating
+
+Config and state live outside the tree, in `/etc/mail-sentinel` and
+`/var/lib/mail-sentinel`, so replacing the code cannot touch either. That is what makes
+this safe rather than careful.
+
+1. Read the entry for the version you are moving to in `CHANGELOG.md`, the upgrade notes
+   included. A release that changes the state file format makes the tool start from
+   empty: it re-reads the logs from the beginning and re-sends alerts already sent.
+
+2. Note what you are on, so you can say what changed if something breaks:
+
+       python3 /opt/mail-sentinel/mail-sentinel.py status | head -1
+
+3. Fetch and unpack the release somewhere that is not `/opt`:
+
+       curl -fsSLO https://github.com/rmarsigli/mail-sentinel/releases/download/vX.Y.Z/mail-sentinel-X.Y.Z.tar.gz
+       tar -xzf mail-sentinel-X.Y.Z.tar.gz
+
+4. Replace the tree. `--delete` is wanted here: it removes files a previous version
+   shipped and this one does not.
+
+       rsync -a --delete mail-sentinel-X.Y.Z/ /opt/mail-sentinel/
+       chown -R root:root /opt/mail-sentinel && chmod -R go-w /opt/mail-sentinel
+       chmod 0755 /opt/mail-sentinel/scripts/*.sh
+
+   There is no need to stop cron. A cycle already running holds a lock, and the next one
+   skips rather than overlapping.
+
+5. Reinstall the two files that live outside the tree. Both are deployment-agnostic, so
+   this never overwrites anything of yours:
+
+       install -m 0644 /opt/mail-sentinel/cron.d/mail-sentinel /etc/cron.d/mail-sentinel
+       install -m 0644 /opt/mail-sentinel/logrotate.d/mail-sentinel /etc/logrotate.d/mail-sentinel
+
+6. Confirm the version and watch one cycle land:
+
+       python3 /opt/mail-sentinel/mail-sentinel.py status | head -1
+       tail -f /var/log/mail-sentinel.log
+
+   A cycle with `exit=0` and a plausible `lines=` count means the update took. If you run
+   a heartbeat, its next ping also confirms it from outside the machine.
+
+Rolling back is the same procedure with the older tarball, with one caveat: if the newer
+version wrote a state file the older one does not recognise, the older one quarantines it
+and starts empty. The upgrade notes say when that applies.
+
+From a workstation with the repository checked out, `scripts/deploy.sh <ssh-host> --apply`
+does steps 4 and 5 and runs the suite first.
+
 ## Uninstall
 
     rm /etc/cron.d/mail-sentinel /etc/logrotate.d/mail-sentinel

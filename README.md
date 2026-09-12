@@ -103,6 +103,36 @@ Exit codes are part of the contract: 0 success, 1 config error, 2 log access err
 
 cron does not mail on the exit code, it mails when the job writes something. So every failure also writes its line to stderr, and a clean cycle writes nothing at all. Set `MAILTO` in `/etc/cron.d/mail-sentinel` to an address someone actually reads.
 
+## Heartbeat
+
+The tool tells you when your mail server misbehaves. Nothing tells you when the tool
+itself stops running, and a process cannot announce its own death: a stopped cron, a
+`python3` removed by an upgrade or a host that is simply gone all fail by producing
+nothing at all, which is indistinguishable from a quiet week.
+
+So every cycle can report to an outside monitor. Write the ping URL and it starts; delete
+the file and it stops.
+
+```
+printf '%s\n' 'https://example-monitor/ping/YOUR-UUID' > /etc/mail-sentinel/heartbeat.url
+chmod 0600 /etc/mail-sentinel/heartbeat.url
+```
+
+The exit code of the cycle is appended to the URL, so the monitor learns both that the
+tool ran and how it ended. That gives failures a second route out of the machine, one
+that does not depend on the local Exim or on anyone reading root's mail. Any service
+taking `<url>/<exit-code>` works; healthchecks.io is one, and can be self-hosted. Set the
+period to the cron interval and the grace to a little over twice it.
+
+Be precise about what a green heartbeat means: a mail-sentinel cycle finished recently.
+It is not a health check for the server. Some machine failures do stop the ping, because
+they stop the job, but the box can be up and the tool green while Exim refuses every
+message. This watches the watcher, nothing more.
+
+The ping is chained to the run inside `scripts/run-cycle.sh` rather than scheduled on its
+own. A heartbeat with its own schedule would keep reporting that all is well while the
+tool is dead, which is the single failure it exists to catch.
+
 ## How it works
 
 Each cycle takes an exclusive lock, so a slow run is skipped rather than overlapped. It reads only what was appended to each log since the previous cycle, tracked by inode and byte offset, and restarts at zero when logrotate replaces the file. Parsed events are folded into time buckets held in a JSON state file: fifteen-minute slots kept for 24 hours for authentication, hourly buckets kept for seven days for sending. The rules read those buckets, never the files. State is written atomically, so a crash mid-write cannot leave a half file that would make the next cycle re-read everything and re-alert on all of it.
@@ -116,6 +146,14 @@ run lines=10110 ignored=9273 malformed=0 future_dropped=0 rotated=0 events=login
 ```
 
 A cycle over ten thousand log lines takes well under a second.
+
+## Releases
+
+Tags are `vX.Y.Z` and each one publishes a tarball. [CHANGELOG.md](CHANGELOG.md) says
+what changed and carries the upgrade notes; read them before installing, because a
+release that changes the state file format makes the tool start over, re-reading the logs
+and re-sending alerts it had already sent. `mail-sentinel.py status` prints the version
+installed. Updating is in [docs/install.md](docs/install.md).
 
 ## Development
 
