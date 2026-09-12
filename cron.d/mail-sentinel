@@ -1,13 +1,9 @@
 # mail-sentinel: read Dovecot/Exim logs every 15 minutes and email anomalies.
-# cron mails when a job writes something, not when it exits non-zero, so the
-# tool writes its own errors to stderr. Point MAILTO at an address someone
-# reads; root alone is a mailbox nobody opens.
 #
-# The curl is an optional heartbeat and is a no-op unless
-# /etc/mail-sentinel/heartbeat.url exists. Nothing deployment-specific lives in
-# this file, so reinstalling it never destroys a configured heartbeat. The job
-# reports the tool's own exit code either way; a failed ping shows up as output,
-# which is what cron mails on. See docs/install.md.
-MAILTO=root
+# The job prepares everything, cron only calls it. No MAILTO here on purpose:
+# cron already mails the job owner, root, and where root's mail goes is the
+# box's business, not this project's. Failures write to stderr, which is what
+# cron mails on, and the wrapper reports the exit code to the heartbeat monitor
+# when one is configured. See docs/install.md.
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-*/15 * * * * root /usr/bin/python3 /opt/mail-sentinel/mail-sentinel.py run; rc=$?; [ -s /etc/mail-sentinel/heartbeat.url ] && curl -fsS -m 10 "$(cat /etc/mail-sentinel/heartbeat.url)/$rc" > /dev/null; exit $rc
+*/15 * * * * root /opt/mail-sentinel/scripts/run-cycle.sh

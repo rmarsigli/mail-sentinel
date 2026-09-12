@@ -49,9 +49,17 @@ Everything runs as root on the mail server. Nothing is installed system-wide and
 
    The second cycle is the one that proves deduplication: it should report `suppressed` greater than zero and `sent=0` for alerts already delivered in the first.
 
-   Set `MAILTO` in that file to an address someone reads. A clean cycle prints nothing, so cron stays silent; anything that fails writes to stderr and cron turns it into mail. `MAILTO=root` only works if root's mail is aliased somewhere a human looks, which on a fresh cPanel box it usually is not:
+   The cron line calls `scripts/run-cycle.sh` and nothing else. Cron schedules, the job
+   prepares. There is no `MAILTO`, deliberately: cron already mails the owner of the job,
+   which is root, and where root's mail ends up is the box's business rather than this
+   project's. A clean cycle prints nothing so cron stays quiet; anything that fails
+   writes to stderr and becomes mail. Worth knowing where that lands on a fresh cPanel
+   box, because it is usually nowhere:
 
        grep -E '^root:' /etc/aliases
+
+   If nothing routes root's mail to a human, step 7 is not optional in practice. It is
+   then the only channel that reports a failure.
 
 7. Optional, and the only thing that notices when the tool itself stops running. Every
    cycle can ping an external monitor; if the ping stops arriving, that monitor tells
@@ -60,7 +68,8 @@ Everything runs as root on the mail server. Nothing is installed system-wide and
    URL, so a delivery failure also reaches a channel that does not depend on the local
    Exim.
 
-   The cron file already carries the call. It does nothing until the URL file exists:
+   `scripts/run-cycle.sh` already carries the call. It does nothing until the URL file
+   exists:
 
        printf '%s\n' 'https://example-monitor/ping/YOUR-UUID' > /etc/mail-sentinel/heartbeat.url
        chmod 0600 /etc/mail-sentinel/heartbeat.url
@@ -86,8 +95,15 @@ Everything runs as root on the mail server. Nothing is installed system-wide and
 9. `python3 /opt/mail-sentinel/mail-sentinel.py status` shows the effective config with the key redacted, the age of the state file and the last run summary.
 
 Step 6 is safe to repeat on a later deploy: nothing in `cron.d/mail-sentinel` is specific
-to one server. If you ever hand-edit the installed file anyway, `diff` it against the
-repository copy before overwriting.
+to one server, so reinstalling it cannot destroy a configured heartbeat. If you ever
+hand-edit the installed file anyway, `diff` it against the repository copy first.
+
+The heartbeat is chained to the run inside `run-cycle.sh` rather than being a second
+entry in `/etc/cron.d`. A separate schedule would keep reporting "alive" while the tool
+is dead, which is the one failure it exists to catch. Connecting two entries instead
+would mean offsetting their schedules so they cannot race, and writing the run's exit
+code to a file for the second one to read, which is a local reimplementation of the
+freshness check the monitor already does remotely.
 
 ## Uninstall
 
