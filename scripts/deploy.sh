@@ -15,9 +15,36 @@ apply=${2:-}
 excludes=(--exclude .git --exclude tests --exclude local --exclude __pycache__
           --exclude .github --exclude 'CLAUDE.md' --exclude 'AGENTS.md')
 
+# What is not tracked is not deployed, but it is worth a word: an api.key, a
+# config.ini or a heartbeat.url left in the root is precisely the file this tree
+# must never carry, and a source file forgotten before a commit would silently
+# not reach the server.
+if [ -n "$(git ls-files --others --exclude-standard)" ]; then
+    {
+        echo "note: these files are not tracked by git, so they will NOT be deployed:"
+        git ls-files --others --exclude-standard | sed 's/^/        /'
+    } >&2
+fi
+
+# rsync used to read the working directory, which meant anything sitting in it
+# rode along to the server. It now copies the tracked files into a staging
+# directory first and ships that, so an untracked key cannot be deployed by
+# accident. The exclude list still applies to the staging directory, exactly as
+# it did to the working one: it keeps tests and notes off the server and, as
+# before, protects those paths on the server from --delete.
+stage=$(mktemp -d)
+list="$stage.files"
+trap 'rm -rf "$stage" "$list"' EXIT
+# A tracked file deleted in the working tree is not there to copy; skipping it
+# keeps a dry run against a dirty tree readable instead of an rsync error.
+git ls-files -z | while IFS= read -r -d '' f; do
+    if [ -e "$f" ]; then printf '%s\0' "$f"; fi
+done > "$list"
+rsync -a --from0 --files-from="$list" ./ "$stage/"
+
 if [ "$apply" != "--apply" ]; then
     echo "== dry run against $host, nothing will be written =="
-    rsync -an --delete --itemize-changes "${excludes[@]}" ./ "$host:/opt/mail-sentinel/"
+    rsync -an --delete --itemize-changes "${excludes[@]}" "$stage/" "$host:/opt/mail-sentinel/"
     echo "== re-run with --apply to deploy =="
     exit 0
 fi
@@ -30,7 +57,7 @@ fi
 bash scripts/check-no-secrets.sh
 bash scripts/smoke.sh > /dev/null && echo "suite and smoke: ok"
 
-rsync -a --delete "${excludes[@]}" ./ "$host:/opt/mail-sentinel/"
+rsync -a --delete "${excludes[@]}" "$stage/" "$host:/opt/mail-sentinel/"
 
 ssh "$host" 'bash -s' <<'REMOTE'
 set -eu
