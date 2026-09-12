@@ -6,8 +6,8 @@ from datetime import datetime
 
 from sentinel.config import (BruteForceCfg, Config, DedupCfg, LockedOutCfg, ProviderCfg,
                              RecipientsCfg, SendingCfg, ServerCfg)
-from sentinel.deliver import (DeliveryError, format_body, format_subject, recipients_for,
-                              send_email)
+from sentinel.deliver import (MAX_DETAILED_ALERTS, MAX_LISTED_ALERTS, DeliveryError, format_body,
+                              format_subject, recipients_for, send_email)
 from sentinel.rules import Alert
 
 NOW = datetime(2026, 9, 11, 20, 30, 0)
@@ -49,6 +49,24 @@ class FormatTest(unittest.TestCase):
         self.assertIn("medium locked_out d@example.com 12", body)
         self.assertIn("ceiling 100", body)
         self.assertIn("b@example.com: 30", body)
+
+    def test_a_flood_of_alerts_produces_a_bounded_body(self):
+        # one locked_out per username tried: an attacker picks the count, so the
+        # body cannot be allowed to grow until the provider rejects it
+        flood = [Alert("locked_out", "medium", "u%03d@example.com" % i, 12,
+                       {"source_ips": 1, "top_ips": [["203.0.113.5", 12]], "first": "a",
+                        "last": "b", "window_minutes": 60}, "locked_out:u%03d" % i)
+                 for i in range(300)]
+        body = format_body("mx1.example.com", flood, NOW)
+        self.assertLess(len(body.encode()), 32 * 1024)
+        self.assertIn("300 alerts this cycle", body)
+        self.assertIn("medium locked_out u000@example.com 12", body)
+        self.assertIn("and %d more not listed" % (300 - MAX_DETAILED_ALERTS - MAX_LISTED_ALERTS), body)
+
+    def test_a_normal_cycle_keeps_every_alert_in_full(self):
+        body = format_body("mx1.example.com", ALERTS, NOW)
+        self.assertNotIn("more, one line each", body)
+        self.assertNotIn("alerts this cycle", body)
 
     def test_recipients_union_by_severity(self):
         self.assertEqual(recipients_for(ALERTS, cfg()), ["boss@example.com", "ops@example.com"])

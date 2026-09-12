@@ -17,6 +17,11 @@ from sentinel.rules import SEVERITY_ORDER, Alert
 
 TIMEOUT_SECONDS = 20
 RETRY_DELAY_SECONDS = 5
+# An attacker picking a fresh username per attempt raises one locked_out alert
+# per name, so the body has to be bounded: an oversized payload is a 4xx, and a
+# 4xx loses the real critical travelling in the same email.
+MAX_DETAILED_ALERTS = 20
+MAX_LISTED_ALERTS = 200
 # Both provider APIs sit behind Cloudflare, which answers urllib's default agent
 # with HTTP 403 (error 1010) on some endpoints. Identify the client so a bot filter
 # never silences the alerts.
@@ -67,11 +72,25 @@ def _details(alert: Alert) -> List[str]:
     return []
 
 
+def _headline(alert: Alert) -> str:
+    return "%s %s %s %d" % (alert.severity, alert.signal, alert.subject, alert.count)
+
+
 def format_body(server_name: str, alerts: List[Alert], now: datetime) -> str:
     lines = ["mail-sentinel on %s, %s" % (server_name, now.strftime("%Y-%m-%d %H:%M")), ""]
-    for alert in alerts:
-        lines.append("%s %s %s %d" % (alert.severity, alert.signal, alert.subject, alert.count))
+    if len(alerts) > MAX_DETAILED_ALERTS:
+        lines.extend(["%d alerts this cycle; the first %d are shown in full."
+                      % (len(alerts), MAX_DETAILED_ALERTS), ""])
+    for alert in alerts[:MAX_DETAILED_ALERTS]:
+        lines.append(_headline(alert))
         lines.extend("  " + line for line in _details(alert))
+        lines.append("")
+    rest = alerts[MAX_DETAILED_ALERTS:]
+    if rest:
+        lines.append("%d more, one line each:" % len(rest))
+        lines.extend("  " + _headline(alert) for alert in rest[:MAX_LISTED_ALERTS])
+        if len(rest) > MAX_LISTED_ALERTS:
+            lines.append("  and %d more not listed" % (len(rest) - MAX_LISTED_ALERTS))
         lines.append("")
     lines.append("This tool only reports. Blocking is up to cPHulk and you.")
     return "\n".join(lines)
