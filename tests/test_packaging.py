@@ -66,6 +66,25 @@ class DocumentationTest(unittest.TestCase):
         self.assertNotIn("Dovecot 2.3 or newer", read("README.md"))
 
 
+class ChangelogTest(unittest.TestCase):
+    """A version nobody can look up is a version nobody can update from."""
+
+    def versions(self):
+        return re.findall(r"^## (\d+\.\d+\.\d+) - \d{4}-\d{2}-\d{2}$", read("CHANGELOG.md"), re.M)
+
+    def test_the_current_version_is_the_newest_entry(self):
+        from sentinel import __version__
+        found = self.versions()
+        self.assertTrue(found, "CHANGELOG.md has no dated version headings")
+        self.assertEqual(found[0], __version__,
+                         "bump the version and the CHANGELOG together, or neither")
+
+    def test_versions_are_newest_first_and_unique(self):
+        found = self.versions()
+        keys = [tuple(int(n) for n in v.split(".")) for v in found]
+        self.assertEqual(keys, sorted(set(keys), reverse=True))
+
+
 class ShippedFilesTest(unittest.TestCase):
     def test_logrotate_file_targets_the_default_log(self):
         self.assertIn("/var/log/mail-sentinel.log", read("logrotate.d", "mail-sentinel"))
