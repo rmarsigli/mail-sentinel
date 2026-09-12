@@ -61,4 +61,13 @@ check_wrapper 0 off -
 check_wrapper 3 off -
 echo "wrapper ok"
 
+# The CI lints this shell; run the same check here when the tool is around, so a
+# finding shows up before a push rather than in a red build.
+if command -v shellcheck > /dev/null; then
+    shellcheck scripts/*.sh
+    echo "shellcheck ok"
+else
+    echo "shellcheck not installed, skipped"
+fi
+
 echo "smoke ok"

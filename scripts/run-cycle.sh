@@ -14,7 +14,7 @@ set -eu
 
 PYTHON="${PYTHON:-/usr/bin/python3}"
 HEARTBEAT_URL_FILE="${HEARTBEAT_URL_FILE:-/etc/mail-sentinel/heartbeat.url}"
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
 set +e
 "$PYTHON" "$ROOT/mail-sentinel.py" run "$@"

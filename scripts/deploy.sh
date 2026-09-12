@@ -23,7 +23,10 @@ if [ "$apply" != "--apply" ]; then
 fi
 
 # Refuse to ship what was never proven, or what is not committed.
-git diff --quiet && git diff --cached --quiet || { echo "working tree is dirty" >&2; exit 1; }
+if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "working tree is dirty" >&2
+    exit 1
+fi
 bash scripts/check-no-secrets.sh
 bash scripts/smoke.sh > /dev/null && echo "suite and smoke: ok"
 
