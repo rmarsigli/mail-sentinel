@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   suite:
-    name: suite (python ${{ matrix.python }})
+    name: python ${{ matrix.python }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -46,7 +46,7 @@ jobs:
         run: sh -n scripts/run-cycle.sh
 
   secrets:
-    name: nothing deployment-specific
+    name: secrets
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
