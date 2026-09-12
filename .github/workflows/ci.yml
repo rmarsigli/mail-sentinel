@@ -12,20 +12,16 @@ permissions:
 jobs:
   suite:
     name: python ${{ matrix.python }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # 3.9 is what the production server runs. It is the one that must stay
-          # green; if a runner image stops shipping it, pin this entry further
-          # back rather than dropping the version.
-          - {python: "3.9", runner: ubuntu-22.04}
-          - {python: "3.11", runner: ubuntu-latest}
-          - {python: "3.13", runner: ubuntu-latest}
+        # 3.9 is what the production server runs, down to the patch: "3.9"
+        # resolves to 3.9.25, the same build. It is the one that must stay green.
+        python: ["3.9", "3.11", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - name: unit tests
@@ -39,7 +35,7 @@ jobs:
     name: shell
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: shellcheck
         run: shellcheck scripts/*.sh
       - name: posix syntax of the wrapper cron runs
@@ -49,7 +45,7 @@ jobs:
     name: secrets
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - run: bash scripts/check-no-secrets.sh
