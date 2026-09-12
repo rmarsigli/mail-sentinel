@@ -17,7 +17,12 @@ def empty_state(now: datetime) -> dict:
             "offsets": {}, "auth": {}, "sends": {}, "sent": {}}
 
 
-def load_state(path: str, now: datetime) -> Tuple[dict, Optional[str]]:
+def load_state(path: str, now: datetime, quarantine: bool = True) -> Tuple[dict, Optional[str]]:
+    """The state and a warning, or None. quarantine=False leaves the file alone.
+
+    A dry-run is a diagnostic and must not be able to throw away the state a
+    real cycle depends on.
+    """
     if not os.path.exists(path):
         return empty_state(now), None
     try:
@@ -29,9 +34,11 @@ def load_state(path: str, now: datetime) -> Tuple[dict, Optional[str]]:
             state.setdefault(key, {} if key != "meta" else {"first_run": now.isoformat()})
         return state, None
     except (ValueError, OSError) as exc:
-        quarantine = "%s.corrupt-%s" % (path, now.strftime("%Y%m%d%H%M%S"))
-        os.replace(path, quarantine)
-        return empty_state(now), "state file corrupt (%s); moved to %s and started empty" % (exc, quarantine)
+        if not quarantine:
+            return empty_state(now), "state file corrupt (%s); left in place, a real run would quarantine it" % exc
+        moved = "%s.corrupt-%s" % (path, now.strftime("%Y%m%d%H%M%S"))
+        os.replace(path, moved)
+        return empty_state(now), "state file corrupt (%s); moved to %s and started empty" % (exc, moved)
 
 
 def save_state(path: str, state: dict) -> None:

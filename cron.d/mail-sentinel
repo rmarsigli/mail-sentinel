@@ -1,4 +1,7 @@
 # mail-sentinel: read Dovecot/Exim logs every 15 minutes and email anomalies.
-# Non-zero exit mails root (cron default); the run summary is in /var/log/mail-sentinel.log.
+# cron mails when a job writes something, not when it exits non-zero, so the
+# tool writes its own errors to stderr. Point MAILTO at an address someone
+# reads; root alone is a mailbox nobody opens.
+MAILTO=root
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 */15 * * * * root /usr/bin/python3 /opt/mail-sentinel/mail-sentinel.py run

@@ -88,6 +88,15 @@ class LoadConfigTest(unittest.TestCase):
         with self.assertRaises(ConfigError):
             load_config(path, check_permissions=False)
 
+    def test_severity_without_a_recipient_is_rejected(self):
+        # an empty "to" is a 4xx from the provider, and that 4xx loses every
+        # other alert travelling in the same email
+        text = MINIMAL.format(key=self.key).replace("medium = a@example.com", "")
+        path = write(self.tmp.name, text)
+        with self.assertRaises(ConfigError) as ctx:
+            load_config(path, check_permissions=False)
+        self.assertIn("medium", str(ctx.exception))
+
     def test_key_file_must_exist(self):
         path = write(self.tmp.name, MINIMAL.format(key="/nonexistent/api.key"))
         with self.assertRaises(ConfigError):

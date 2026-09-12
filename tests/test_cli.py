@@ -1,3 +1,4 @@
+import contextlib
 import io
 import json
 import os
@@ -134,6 +135,49 @@ window_minutes = 15
         self.assertEqual(self.run_cli("test-delivery"), 0)
         self.assertEqual(self.sent[0]["to"], ["ops@example.com"])
         self.assertIn("test", self.sent[0]["subject"].lower())
+
+    def test_cron_mode_writes_errors_to_stderr_so_cron_mails_them(self):
+        # cron mails when the job writes something, not when it exits non-zero;
+        # a delivery failure that only reaches the log file is never seen
+        import urllib.error
+
+        def bad_opener(request, timeout=0):
+            raise urllib.error.URLError("down")
+        argv = ["--config", self.config, "--no-permission-check", "--now", "2026-09-11T20:30:00", "run"]
+        real = io.StringIO()
+        with contextlib.redirect_stderr(real):
+            code = cli.main(argv, opener=bad_opener, sleep=lambda s: None)
+        self.assertEqual(code, 3)
+        self.assertIn("delivery failed", real.getvalue())
+
+    def test_cron_mode_stays_quiet_on_a_clean_cycle(self):
+        argv = ["--config", self.config, "--no-permission-check", "--now", "2026-09-11T20:30:00", "run"]
+        real = io.StringIO()
+        with contextlib.redirect_stderr(real):
+            code = cli.main(argv, opener=self.opener)
+        self.assertEqual(code, 0)
+        self.assertEqual(real.getvalue(), "")
+
+    def test_dry_run_does_not_quarantine_a_corrupt_state(self):
+        os.makedirs(self.state_dir, exist_ok=True)
+        state_path = os.path.join(self.state_dir, "state.json")
+        with open(state_path, "w") as fh:
+            fh.write("{not json")
+        self.assertEqual(self.run_cli("run", "--dry-run"), 0)
+        self.assertTrue(os.path.exists(state_path))
+        self.assertEqual([f for f in os.listdir(self.state_dir) if "corrupt" in f], [])
+
+    def test_unhandled_error_exits_4_with_output(self):
+        def boom(*a, **kw):
+            raise RuntimeError("boom")
+        original = cli.read_new
+        cli.read_new = boom
+        try:
+            code = self.run_cli("run")
+        finally:
+            cli.read_new = original
+        self.assertEqual(code, 4)
+        self.assertIn("unhandled RuntimeError", self.err.getvalue())
 
     def test_status_prints_config_without_key(self):
         out = io.StringIO()

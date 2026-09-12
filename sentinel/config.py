@@ -210,8 +210,13 @@ def load_config(path: str, check_permissions: bool = True, require_key_file: boo
         raise ConfigError("[provider] kind must be one of %s" % ", ".join(PROVIDERS))
     if not cfg.provider.sender:
         raise ConfigError("[provider] from is required")
-    if not any(cfg.recipients.for_severity(s) for s in SEVERITIES):
-        raise ConfigError("[recipients] at least one severity needs a recipient")
+    # Every severity needs its own list. A severity with no recipients produced
+    # an empty "to" at send time, which the provider rejects with a 4xx, and that
+    # one rejection loses every other alert in the same email.
+    missing = [name for name in SEVERITIES if not cfg.recipients.for_severity(name)]
+    if missing:
+        raise ConfigError("[recipients] every severity needs at least one recipient; missing: %s"
+                          % ", ".join(missing))
     if require_key_file:
         if not os.path.isfile(cfg.provider.api_key_file):
             raise ConfigError("api key file not found: %s" % cfg.provider.api_key_file)
