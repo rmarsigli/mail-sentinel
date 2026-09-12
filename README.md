@@ -4,6 +4,8 @@ Anomaly alerts for small cPanel mail servers. One Python script, run by cron eve
 
 cPHulk blocks brute force, and it does that well. What it does not do is tell you that `sales@` has collected four thousand failed logins this week, or that `intern@` started sending three hundred messages an hour at three in the morning. Everything needed to know both is already sitting in `/var/log/maillog` and `/var/log/exim_mainlog`. This reads it and tells you.
 
+![Mail Sentinel Banner](.github/assets/gh-banner.png)
+
 ## What it detects
 
 **Brute force** (severity `high`). An IP with at least 20 authentication failures in the last 15 minutes and zero successful logins in the last 24 hours. The "zero successes" clause is the important half: an IP with both failures and successes is a real person with a stale password on one device, which is a different problem with a different fix. Mixing the two is how alert email becomes email nobody reads.
@@ -53,10 +55,8 @@ Repeats are suppressed. The same brute-forcing IP or the same locked-out account
 
 ## Requirements
 
-- cPanel with Dovecot 2.4 and Exim. Tested on cPanel 134, AlmaLinux 9, Dovecot 2.4, Exim 4.99. The Dovecot
-  parser reads the 2.4 wording (`Logged in:`, `Login aborted:`); on 2.3 those lines are counted as ignored.
-- Exim with `log_selector` including `+incoming_port`, which cPanel sets by default. Without it the send
-  lines carry no port and the abnormal sending signal sees nothing.
+- cPanel with Dovecot 2.4 and Exim. Tested on cPanel 134, AlmaLinux 9, Dovecot 2.4, Exim 4.99. The Dovecot parser reads the 2.4 wording (`Logged in:`, `Login aborted:`); on 2.3 those lines are counted as ignored.
+- Exim with `log_selector` including `+incoming_port`, which cPanel sets by default. Without it the send lines carry no port and the abnormal sending signal sees nothing.
 - Python 3.9 or newer at `/usr/bin/python3`. Nothing from pip.
 - Outbound HTTPS to `api.brevo.com` or `api.resend.com`.
 - A Brevo or Resend account, an API key, and a sender address on a domain verified with that provider.
@@ -105,33 +105,20 @@ cron does not mail on the exit code, it mails when the job writes something. So 
 
 ## Heartbeat
 
-The tool tells you when your mail server misbehaves. Nothing tells you when the tool
-itself stops running, and a process cannot announce its own death: a stopped cron, a
-`python3` removed by an upgrade or a host that is simply gone all fail by producing
-nothing at all, which is indistinguishable from a quiet week.
+The tool tells you when your mail server misbehaves. Nothing tells you when the tool itself stops running, and a process cannot announce its own death: a stopped cron, a `python3` removed by an upgrade or a host that is simply gone all fail by producing nothing at all, which is indistinguishable from a quiet week.
 
-So every cycle can report to an outside monitor. Write the ping URL and it starts; delete
-the file and it stops.
+So every cycle can report to an outside monitor. Write the ping URL and it starts; delete the file and it stops.
 
 ```
 printf '%s\n' 'https://example-monitor/ping/YOUR-UUID' > /etc/mail-sentinel/heartbeat.url
 chmod 0600 /etc/mail-sentinel/heartbeat.url
 ```
 
-The exit code of the cycle is appended to the URL, so the monitor learns both that the
-tool ran and how it ended. That gives failures a second route out of the machine, one
-that does not depend on the local Exim or on anyone reading root's mail. Any service
-taking `<url>/<exit-code>` works; healthchecks.io is one, and can be self-hosted. Set the
-period to the cron interval and the grace to a little over twice it.
+The exit code of the cycle is appended to the URL, so the monitor learns both that the tool ran and how it ended. That gives failures a second route out of the machine, one that does not depend on the local Exim or on anyone reading root's mail. Any service taking `<url>/<exit-code>` works; healthchecks.io is one, and can be self-hosted. Set the period to the cron interval and the grace to a little over twice it.
 
-Be precise about what a green heartbeat means: a mail-sentinel cycle finished recently.
-It is not a health check for the server. Some machine failures do stop the ping, because
-they stop the job, but the box can be up and the tool green while Exim refuses every
-message. This watches the watcher, nothing more.
+Be precise about what a green heartbeat means: a mail-sentinel cycle finished recently. It is not a health check for the server. Some machine failures do stop the ping, because they stop the job, but the box can be up and the tool green while Exim refuses every message. This watches the watcher, nothing more.
 
-The ping is chained to the run inside `scripts/run-cycle.sh` rather than scheduled on its
-own. A heartbeat with its own schedule would keep reporting that all is well while the
-tool is dead, which is the single failure it exists to catch.
+The ping is chained to the run inside `scripts/run-cycle.sh` rather than scheduled on its own. A heartbeat with its own schedule would keep reporting that all is well while the tool is dead, which is the single failure it exists to catch.
 
 ## How it works
 
@@ -149,11 +136,7 @@ A cycle over ten thousand log lines takes well under a second.
 
 ## Releases
 
-Tags are `vX.Y.Z` and each one publishes a tarball. [CHANGELOG.md](CHANGELOG.md) says
-what changed and carries the upgrade notes; read them before installing, because a
-release that changes the state file format makes the tool start over, re-reading the logs
-and re-sending alerts it had already sent. `mail-sentinel.py status` prints the version
-installed. Updating is in [docs/install.md](docs/install.md).
+Tags are `vX.Y.Z` and each one publishes a tarball. [CHANGELOG.md](CHANGELOG.md) says what changed and carries the upgrade notes; read them before installing, because a release that changes the state file format makes the tool start over, re-reading the logs and re-sending alerts it had already sent. `mail-sentinel.py status` prints the version installed. Updating is in [docs/install.md](docs/install.md).
 
 ## Development
 
