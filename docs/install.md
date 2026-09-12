@@ -53,18 +53,49 @@ Everything runs as root on the mail server. Nothing is installed system-wide and
 
        grep -E '^root:' /etc/aliases
 
-7. Rotate the tool's own log, which nothing else rotates:
+7. Optional, and the only thing that notices when the tool itself stops running. Every
+   cycle can ping an external monitor; if the ping stops arriving, that monitor tells
+   you. It is the only way a stopped cron, a removed `python3` or a dead host gets
+   reported, because a process cannot announce its own death. The exit code rides on the
+   URL, so a delivery failure also reaches a channel that does not depend on the local
+   Exim.
+
+   The cron file already carries the call. It does nothing until the URL file exists:
+
+       printf '%s\n' 'https://example-monitor/ping/YOUR-UUID' > /etc/mail-sentinel/heartbeat.url
+       chmod 0600 /etc/mail-sentinel/heartbeat.url
+
+   Any heartbeat service that accepts `<url>/<exit-code>` works; healthchecks.io is one,
+   and is self-hostable. Set the expected period to your cron interval and the grace to
+   a little over twice it, so one missed cycle does not page you.
+
+   The URL is a credential: anyone holding it can fake a heartbeat. That is why it lives
+   in `/etc/mail-sentinel/` beside `api.key`, which the install steps never overwrite,
+   and never in this repository.
+
+   Prove it once, including the part everyone skips: comment the cron line out, wait
+   past the grace period, confirm the alert fires, then restore it. A monitor you have
+   never seen fire is a monitor you only believe you have.
+
+8. Rotate the tool's own log, which nothing else rotates:
 
        cp /opt/mail-sentinel/logrotate.d/mail-sentinel /etc/logrotate.d/mail-sentinel
        chmod 0644 /etc/logrotate.d/mail-sentinel
        logrotate -d /etc/logrotate.d/mail-sentinel
 
-8. `python3 /opt/mail-sentinel/mail-sentinel.py status` shows the effective config with the key redacted, the age of the state file and the last run summary.
+9. `python3 /opt/mail-sentinel/mail-sentinel.py status` shows the effective config with the key redacted, the age of the state file and the last run summary.
+
+Step 6 is safe to repeat on a later deploy: nothing in `cron.d/mail-sentinel` is specific
+to one server. If you ever hand-edit the installed file anyway, `diff` it against the
+repository copy before overwriting.
 
 ## Uninstall
 
     rm /etc/cron.d/mail-sentinel /etc/logrotate.d/mail-sentinel
     rm -rf /opt/mail-sentinel /var/lib/mail-sentinel /etc/mail-sentinel /var/log/mail-sentinel.log
+
+`/etc/mail-sentinel` holds `heartbeat.url` too, so the monitor stops being pinged and
+reports the tool as down. Delete the check on its dashboard as well.
 
 ## Tuning
 

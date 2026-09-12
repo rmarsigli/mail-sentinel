@@ -2,6 +2,12 @@
 # cron mails when a job writes something, not when it exits non-zero, so the
 # tool writes its own errors to stderr. Point MAILTO at an address someone
 # reads; root alone is a mailbox nobody opens.
+#
+# The curl is an optional heartbeat and is a no-op unless
+# /etc/mail-sentinel/heartbeat.url exists. Nothing deployment-specific lives in
+# this file, so reinstalling it never destroys a configured heartbeat. The job
+# reports the tool's own exit code either way; a failed ping shows up as output,
+# which is what cron mails on. See docs/install.md.
 MAILTO=root
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-*/15 * * * * root /usr/bin/python3 /opt/mail-sentinel/mail-sentinel.py run
+*/15 * * * * root /usr/bin/python3 /opt/mail-sentinel/mail-sentinel.py run; rc=$?; [ -s /etc/mail-sentinel/heartbeat.url ] && curl -fsS -m 10 "$(cat /etc/mail-sentinel/heartbeat.url)/$rc" > /dev/null; exit $rc
