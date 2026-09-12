@@ -1,0 +1,4 @@
+# mail-sentinel: read Dovecot/Exim logs every 15 minutes and email anomalies.
+# Non-zero exit mails root (cron default); the run summary is in /var/log/mail-sentinel.log.
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+*/15 * * * * root /usr/bin/python3 /opt/mail-sentinel/mail-sentinel.py run
