@@ -1,13 +1,8 @@
 # Install
 
-`scripts/deploy.sh <ssh-host>` does steps 1 and 6 through 8 for an existing install, and
-shows a dry run until you add `--apply`. The steps below are what it automates, and what
-you do the first time.
+`scripts/deploy.sh <ssh-host>` does steps 1 and 6 through 8 for an existing install, and shows a dry run until you add `--apply`. The steps below are what it automates, and what you do the first time.
 
-Deployment runs from a workstation, never from CI. Automating it would mean putting an
-SSH key that is root on a mail server into a CI provider's secret store, which trades a
-manual `rsync` for a credential that grants root on the very box this project exists to
-watch. Not a trade worth making for a project that deploys by copying a directory.
+Deployment runs from a workstation, never from CI. Automating it would mean putting an SSH key that is root on a mail server into a CI provider's secret store, which trades a manual `rsync` for a credential that grants root on the very box this project exists to watch. Not a trade worth making for a project that deploys by copying a directory.
 
 Everything runs as root on the mail server. Nothing is installed system-wide and nothing comes from pip; the tree lives in `/opt/mail-sentinel`.
 
@@ -58,42 +53,24 @@ Everything runs as root on the mail server. Nothing is installed system-wide and
 
    The second cycle is the one that proves deduplication: it should report `suppressed` greater than zero and `sent=0` for alerts already delivered in the first.
 
-   The cron line calls `scripts/run-cycle.sh` and nothing else. Cron schedules, the job
-   prepares. There is no `MAILTO`, deliberately: cron already mails the owner of the job,
-   which is root, and where root's mail ends up is the box's business rather than this
-   project's. A clean cycle prints nothing so cron stays quiet; anything that fails
-   writes to stderr and becomes mail. Worth knowing where that lands on a fresh cPanel
-   box, because it is usually nowhere:
+   The cron line calls `scripts/run-cycle.sh` and nothing else. Cron schedules, the job prepares. There is no `MAILTO`, deliberately: cron already mails the owner of the job, which is root, and where root's mail ends up is the box's business rather than this project's. A clean cycle prints nothing so cron stays quiet; anything that fails writes to stderr and becomes mail. Worth knowing where that lands on a fresh cPanel box, because it is usually nowhere:
 
        grep -E '^root:' /etc/aliases
 
-   If nothing routes root's mail to a human, step 7 is not optional in practice. It is
-   then the only channel that reports a failure.
+   If nothing routes root's mail to a human, step 7 is not optional in practice. It is then the only channel that reports a failure.
 
-7. Optional, and the only thing that notices when the tool itself stops running. Every
-   cycle can ping an external monitor; if the ping stops arriving, that monitor tells
-   you. It is the only way a stopped cron, a removed `python3` or a dead host gets
-   reported, because a process cannot announce its own death. The exit code rides on the
-   URL, so a delivery failure also reaches a channel that does not depend on the local
-   Exim.
+7. Optional, and the only thing that notices when the tool itself stops running. Every cycle can ping an external monitor; if the ping stops arriving, that monitor tells you. It is the only way a stopped cron, a removed `python3` or a dead host gets reported, because a process cannot announce its own death. The exit code rides on the URL, so a delivery failure also reaches a channel that does not depend on the local Exim.
 
-   `scripts/run-cycle.sh` already carries the call. It does nothing until the URL file
-   exists:
+   `scripts/run-cycle.sh` already carries the call. It does nothing until the URL file exists:
 
        printf '%s\n' 'https://example-monitor/ping/YOUR-UUID' > /etc/mail-sentinel/heartbeat.url
        chmod 0600 /etc/mail-sentinel/heartbeat.url
 
-   Any heartbeat service that accepts `<url>/<exit-code>` works; healthchecks.io is one,
-   and is self-hostable. Set the expected period to your cron interval and the grace to
-   a little over twice it, so one missed cycle does not page you.
+   Any heartbeat service that accepts `<url>/<exit-code>` works; healthchecks.io is one, and is self-hostable. Set the expected period to your cron interval and the grace to a little over twice it, so one missed cycle does not page you.
 
-   The URL is a credential: anyone holding it can fake a heartbeat. That is why it lives
-   in `/etc/mail-sentinel/` beside `api.key`, which the install steps never overwrite,
-   and never in this repository.
+   The URL is a credential: anyone holding it can fake a heartbeat. That is why it lives in `/etc/mail-sentinel/` beside `api.key`, which the install steps never overwrite, and never in this repository.
 
-   Prove it once, including the part everyone skips: comment the cron line out, wait
-   past the grace period, confirm the alert fires, then restore it. A monitor you have
-   never seen fire is a monitor you only believe you have.
+   Prove it once, including the part everyone skips: comment the cron line out, wait past the grace period, confirm the alert fires, then restore it. A monitor you have never seen fire is a monitor you only believe you have.
 
 8. Rotate the tool's own log, which nothing else rotates:
 
@@ -103,26 +80,15 @@ Everything runs as root on the mail server. Nothing is installed system-wide and
 
 9. `python3 /opt/mail-sentinel/mail-sentinel.py status` shows the effective config with the key redacted, the age of the state file and the last run summary.
 
-Step 6 is safe to repeat on a later deploy: nothing in `cron.d/mail-sentinel` is specific
-to one server, so reinstalling it cannot destroy a configured heartbeat. If you ever
-hand-edit the installed file anyway, `diff` it against the repository copy first.
+Step 6 is safe to repeat on a later deploy: nothing in `cron.d/mail-sentinel` is specific to one server, so reinstalling it cannot destroy a configured heartbeat. If you ever hand-edit the installed file anyway, `diff` it against the repository copy first.
 
-The heartbeat is chained to the run inside `run-cycle.sh` rather than being a second
-entry in `/etc/cron.d`. A separate schedule would keep reporting "alive" while the tool
-is dead, which is the one failure it exists to catch. Connecting two entries instead
-would mean offsetting their schedules so they cannot race, and writing the run's exit
-code to a file for the second one to read, which is a local reimplementation of the
-freshness check the monitor already does remotely.
+The heartbeat is chained to the run inside `run-cycle.sh` rather than being a second entry in `/etc/cron.d`. A separate schedule would keep reporting "alive" while the tool is dead, which is the one failure it exists to catch. Connecting two entries instead would mean offsetting their schedules so they cannot race, and writing the run's exit code to a file for the second one to read, which is a local reimplementation of the freshness check the monitor already does remotely.
 
 ## Updating
 
-Config and state live outside the tree, in `/etc/mail-sentinel` and
-`/var/lib/mail-sentinel`, so replacing the code cannot touch either. That is what makes
-this safe rather than careful.
+Config and state live outside the tree, in `/etc/mail-sentinel` and `/var/lib/mail-sentinel`, so replacing the code cannot touch either. That is what makes this safe rather than careful.
 
-1. Read the entry for the version you are moving to in `CHANGELOG.md`, the upgrade notes
-   included. A release that changes the state file format makes the tool start from
-   empty: it re-reads the logs from the beginning and re-sends alerts already sent.
+1. Read the entry for the version you are moving to in `CHANGELOG.md`, the upgrade notes included. A release that changes the state file format makes the tool start from empty: it re-reads the logs from the beginning and re-sends alerts already sent.
 
 2. Note what you are on, so you can say what changed if something breaks:
 
@@ -133,18 +99,15 @@ this safe rather than careful.
        curl -fsSLO https://github.com/rmarsigli/mail-sentinel/releases/download/vX.Y.Z/mail-sentinel-X.Y.Z.tar.gz
        tar -xzf mail-sentinel-X.Y.Z.tar.gz
 
-4. Replace the tree. `--delete` is wanted here: it removes files a previous version
-   shipped and this one does not.
+4. Replace the tree. `--delete` is wanted here: it removes files a previous version shipped and this one does not.
 
        rsync -a --delete mail-sentinel-X.Y.Z/ /opt/mail-sentinel/
        chown -R root:root /opt/mail-sentinel && chmod -R go-w /opt/mail-sentinel
        chmod 0755 /opt/mail-sentinel/scripts/*.sh
 
-   There is no need to stop cron. A cycle already running holds a lock, and the next one
-   skips rather than overlapping.
+   There is no need to stop cron. A cycle already running holds a lock, and the next one skips rather than overlapping.
 
-5. Reinstall the two files that live outside the tree. Both are deployment-agnostic, so
-   this never overwrites anything of yours:
+5. Reinstall the two files that live outside the tree. Both are deployment-agnostic, so this never overwrites anything of yours:
 
        install -m 0644 /opt/mail-sentinel/cron.d/mail-sentinel /etc/cron.d/mail-sentinel
        install -m 0644 /opt/mail-sentinel/logrotate.d/mail-sentinel /etc/logrotate.d/mail-sentinel
@@ -154,23 +117,18 @@ this safe rather than careful.
        python3 /opt/mail-sentinel/mail-sentinel.py status | head -1
        tail -f /var/log/mail-sentinel.log
 
-   A cycle with `exit=0` and a plausible `lines=` count means the update took. If you run
-   a heartbeat, its next ping also confirms it from outside the machine.
+   A cycle with `exit=0` and a plausible `lines=` count means the update took. If you run a heartbeat, its next ping also confirms it from outside the machine.
 
-Rolling back is the same procedure with the older tarball, with one caveat: if the newer
-version wrote a state file the older one does not recognise, the older one quarantines it
-and starts empty. The upgrade notes say when that applies.
+Rolling back is the same procedure with the older tarball, with one caveat: if the newer version wrote a state file the older one does not recognise, the older one quarantines it and starts empty. The upgrade notes say when that applies.
 
-From a workstation with the repository checked out, `scripts/deploy.sh <ssh-host> --apply`
-does steps 4 and 5 and runs the suite first.
+From a workstation with the repository checked out, `scripts/deploy.sh <ssh-host> --apply` does steps 4 and 5 and runs the suite first.
 
 ## Uninstall
 
     rm /etc/cron.d/mail-sentinel /etc/logrotate.d/mail-sentinel
     rm -rf /opt/mail-sentinel /var/lib/mail-sentinel /etc/mail-sentinel /var/log/mail-sentinel.log
 
-`/etc/mail-sentinel` holds `heartbeat.url` too, so the monitor stops being pinged and
-reports the tool as down. Delete the check on its dashboard as well.
+`/etc/mail-sentinel` holds `heartbeat.url` too, so the monitor stops being pinged and reports the tool as down. Delete the check on its dashboard as well.
 
 ## Tuning
 
