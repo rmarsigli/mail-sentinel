@@ -35,15 +35,25 @@ class Event:
     count: int = 1
 
 
-def parse_syslog_ts(text: str, now: datetime) -> datetime:
+def parse_syslog_ts(text: str, now: datetime) -> Optional[datetime]:
+    """None for anything this function cannot turn into a date.
+
+    It must never raise. A single line it chokes on would abort the cycle
+    before the offsets are saved, so the same line is re-read and the same
+    exception is raised every 15 minutes until logrotate carries it away.
+    """
     m = _SYSLOG_TS.match(text + " ")
     if not m:
-        raise ValueError("not a syslog timestamp: %r" % text)
-    ts = datetime(now.year, _MONTHS[m.group("mon")], int(m.group("day")),
-                  int(m.group("h")), int(m.group("m")), int(m.group("s")))
-    # maillog carries no year; a line "from the future" was written last year.
-    if ts - now > timedelta(days=1):
-        ts = ts.replace(year=now.year - 1)
+        return None
+    try:
+        ts = datetime(now.year, _MONTHS[m.group("mon")], int(m.group("day")),
+                      int(m.group("h")), int(m.group("m")), int(m.group("s")))
+        # maillog carries no year; a line "from the future" was written last year.
+        if ts - now > timedelta(days=1):
+            ts = ts.replace(year=now.year - 1)
+    except (KeyError, ValueError):
+        # Feb 29 read in a non-leap year, or a month abbreviation we do not know.
+        return None
     return ts
 
 
@@ -54,24 +64,37 @@ def _exim_ts(line: str) -> Optional[datetime]:
     return datetime.strptime(line[:19], "%Y-%m-%d %H:%M:%S")
 
 
-def parse_line(line: str, source: str, now: datetime) -> Optional[Event]:
+def parse_line(line: str, source: str, now: datetime, stats: Optional[dict] = None) -> Optional[Event]:
+    """One Event or None. `stats` collects counters the caller wants to report."""
     if source == "maillog":
-        return _parse_maillog(line, now)
+        return _parse_maillog(line, now, stats)
     if source == "exim":
         return _parse_exim(line)
     raise ValueError("unknown source %r" % source)
 
 
-def _parse_maillog(line: str, now: datetime) -> Optional[Event]:
+def _malformed(stats: Optional[dict]) -> None:
+    if stats is not None:
+        stats["malformed"] = stats.get("malformed", 0) + 1
+
+
+def _parse_maillog(line: str, now: datetime, stats: Optional[dict] = None) -> Optional[Event]:
     if "-login: " not in line:
         return None
     m = _DOVECOT_OK.search(line)
-    if m:
-        return Event("login_ok", parse_syslog_ts(line, now), m.group("user"), m.group("ip"), 1)
-    m = _DOVECOT_FAIL.search(line)
-    if m:
-        return Event("login_fail", parse_syslog_ts(line, now), m.group("user"), m.group("ip"), int(m.group("n")))
-    return None
+    kind, count = "login_ok", 1
+    if not m:
+        m = _DOVECOT_FAIL.search(line)
+        if not m:
+            return None
+        kind, count = "login_fail", int(m.group("n"))
+    ts = parse_syslog_ts(line, now)
+    if ts is None:
+        # A login line we recognise but cannot date: rsyslog is writing a
+        # timestamp format we do not read. Counted, never fatal.
+        _malformed(stats)
+        return None
+    return Event(kind, ts, m.group("user"), m.group("ip"), count)
 
 
 def _parse_exim(line: str) -> Optional[Event]:

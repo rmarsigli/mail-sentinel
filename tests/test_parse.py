@@ -92,5 +92,42 @@ class EximParseTest(unittest.TestCase):
             parse_line(self.l[0], "syslog", NOW)
 
 
+class MalformedTest(unittest.TestCase):
+    """A line the parser cannot date must be counted, never raised.
+
+    An exception here aborts the cycle before the offsets are saved, so the
+    same line is re-read and blows up again every 15 minutes.
+    """
+
+    def test_rfc3339_timestamp_is_counted_not_raised(self):
+        line = ("2026-09-11T20:24:06.123456-03:00 mx1 dovecot[1]: imap-login: Logged in: "
+                "user=<a@example.com>, method=PLAIN, rip=203.0.113.5")
+        stats = {}
+        self.assertIsNone(parse_line(line, "maillog", NOW, stats))
+        self.assertEqual(stats["malformed"], 1)
+
+    def test_feb_29_in_a_non_leap_year_is_counted_not_raised(self):
+        line = ("Feb 29 10:00:00 mx1 dovecot[1]: imap-login: Logged in: "
+                "user=<a@example.com>, rip=203.0.113.5")
+        stats = {}
+        self.assertIsNone(parse_line(line, "maillog", datetime(2029, 3, 1), stats))
+        self.assertEqual(stats["malformed"], 1)
+
+    def test_unknown_month_is_counted_not_raised(self):
+        line = ("Foo 11 20:24:06 mx1 dovecot[1]: imap-login: Logged in: "
+                "user=<a@example.com>, rip=203.0.113.5")
+        self.assertIsNone(parse_line(line, "maillog", NOW))
+
+    def test_parse_syslog_ts_returns_none_instead_of_raising(self):
+        self.assertIsNone(parse_syslog_ts("2026-09-11T20:24:06", NOW))
+
+    def test_a_good_line_does_not_count_as_malformed(self):
+        stats = {}
+        line = ("Sep 11 20:24:06 mx1 dovecot[1]: imap-login: Logged in: "
+                "user=<a@example.com>, method=PLAIN, rip=203.0.113.5")
+        self.assertIsNotNone(parse_line(line, "maillog", NOW, stats))
+        self.assertEqual(stats, {})
+
+
 if __name__ == "__main__":
     unittest.main()
