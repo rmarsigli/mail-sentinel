@@ -1,7 +1,11 @@
-# Deployment-specific notes and secrets: never published
+# Deployment-specific notes and secrets: never published. These are the files
+# that live in /etc/mail-sentinel on a server; a copy left in this tree is how
+# a key gets committed, and deploy.sh only ships what git tracks.
 local/
 *.key
 *.env
+config.ini
+*.url
 
 # Python
 __pycache__/
