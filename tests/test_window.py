@@ -114,10 +114,24 @@ class SendsTest(unittest.TestCase):
         self.assertEqual(hourly_mean(s, "u@example.com", "2026-09-11T19", 168), 2.0)
         self.assertEqual(hourly_mean(s, "nobody@example.com", "2026-09-11T19", 168), 0.0)
 
-    def test_hourly_mean_divides_by_requested_hours_even_when_sparse(self):
+    def test_quiet_account_in_a_fully_observed_window_divides_by_the_window(self):
         s = fresh()
+        # another account has been sending for four hours, so the window is observed
+        for h in range(1, 5):
+            add_event(s, Event("send", datetime(2026, 9, 11, 19, 0, 0) - timedelta(hours=h),
+                               "other@example.com", "1.1.1.1", 1))
         add_event(s, Event("send", datetime(2026, 9, 11, 18, 0, 0), "u@example.com", "1.1.1.1", 1))
         self.assertAlmostEqual(hourly_mean(s, "u@example.com", "2026-09-11T19", 4), 0.25)
+
+    def test_hourly_mean_never_divides_by_more_history_than_exists(self):
+        s = fresh()
+        for h in range(1, 74):  # 73 hours of history at a steady 10 messages an hour
+            add_event(s, Event("send", datetime(2026, 9, 11, 20, 0, 0) - timedelta(hours=h),
+                               "u@example.com", "1.1.1.1", 10))
+        self.assertAlmostEqual(hourly_mean(s, "u@example.com", "2026-09-11T20", 168), 10.0)
+
+    def test_hourly_mean_without_history_is_zero(self):
+        self.assertEqual(hourly_mean(fresh(), "u@example.com", "2026-09-11T19", 168), 0.0)
 
 
 if __name__ == "__main__":

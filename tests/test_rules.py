@@ -193,6 +193,32 @@ class DedupTest(unittest.TestCase):
         self.assertEqual([a.signal for a in kept], ["locked_out"])
         self.assertEqual(suppressed, 1)
 
+    def test_empty_account_never_raises_locked_out(self):
+        # Dovecot writes user=<> when the client offered no username; there is
+        # no mailbox to warn about, but the IP is still brute forcing
+        s = state_started(1)
+        fails(s, "203.0.113.10", "", 25, 5)
+        alerts = evaluate(s, cfg(), NOW)
+        self.assertEqual(by_signal(alerts, "locked_out"), [])
+        self.assertEqual(len(by_signal(alerts, "brute_force")), 1)
+
+    def test_abnormal_sending_rechecks_earlier_closed_hours(self):
+        # delivery was down for the hour the burst happened; the alert has to
+        # survive into the next cycles instead of ageing out after four tries
+        s = state_started(1)
+        sends(s, "b@example.com", "203.0.113.10", 200, 4)
+        alerts = by_signal(evaluate(s, cfg(), NOW), "abnormal_sending")
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0].details["hour"], "2026-09-11T16")
+
+    def test_an_hour_already_delivered_is_not_raised_again(self):
+        s = state_started(1)
+        sends(s, "b@example.com", "203.0.113.10", 200, 4)
+        mark_sent(s, ["abnormal_sending:b@example.com:2026-09-11T16"], NOW - timedelta(hours=2))
+        kept, suppressed = dedup(evaluate(s, cfg(), NOW), s, cfg(), NOW)
+        self.assertEqual(by_signal(kept, "abnormal_sending"), [])
+        self.assertEqual(suppressed, 1)
+
     def test_evaluate_orders_by_severity(self):
         s = state_started(1)
         fails(s, "203.0.113.10", "a@example.com", 25, 5)

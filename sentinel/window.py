@@ -139,11 +139,33 @@ def sends_for_hour(state: dict, hour: str) -> Dict[str, dict]:
     return dict(state.get("sends", {}).get(hour, {}))
 
 
+def observed_hours(state: dict, end_hour: str) -> int:
+    """How many hourly buckets of history actually exist before end_hour."""
+    sends = state.get("sends", {})
+    if not sends:
+        return 0
+    oldest = min(sends)
+    if oldest >= end_hour:
+        return 0
+    end = datetime.strptime(end_hour, "%Y-%m-%dT%H")
+    first = datetime.strptime(oldest, "%Y-%m-%dT%H")
+    return int((end - first).total_seconds() // 3600)
+
+
 def hourly_mean(state: dict, account: str, end_hour: str, hours: int) -> float:
-    """Mean sends per hour over the `hours` buckets strictly before end_hour."""
+    """Mean sends per hour over the buckets strictly before end_hour.
+
+    The divisor is the history that exists, never the window we asked for.
+    Dividing three days of data by a seven-day window understates the mean by
+    up to 2.3x, which makes the multiplier rule that much more trigger-happy
+    exactly in the days after an install.
+    """
+    span = min(hours, observed_hours(state, end_hour))
+    if span < 1:
+        return 0.0
     end = datetime.strptime(end_hour, "%Y-%m-%dT%H")
     total = 0
-    for h in range(1, hours + 1):
+    for h in range(1, span + 1):
         key = hour_key(end - timedelta(hours=h))
         total += state.get("sends", {}).get(key, {}).get(account, {}).get("count", 0)
-    return total / float(hours) if hours else 0.0
+    return total / float(span)

@@ -14,6 +14,11 @@ from sentinel.window import (account_totals, all_accounts_in_window, all_ips_in_
 
 SEVERITY_ORDER = ("critical", "high", "medium")
 BASELINE_HOURS = 168  # 7 days
+# Closed hours re-checked every cycle. Looking only at the hour that just closed
+# loses the alert for good if delivery is down for that one hour; the dedup key
+# carries the hour, so re-checking is idempotent and only ever raises the hours
+# that were never delivered.
+LOOKBACK_HOURS = 6
 
 # cPanel authenticates its own services as __cpanel__service__auth__<svc>__<token>.
 # That identity is not a mailbox the operator can open, and the token is
@@ -65,7 +70,9 @@ def locked_out_alerts(state: dict, cfg: Config, now: datetime) -> List[Alert]:
     day_ago = now - timedelta(hours=24)
     out = []
     for account in sorted(all_accounts_in_window(state, since, now)):
-        if is_service_identity(account):
+        # Dovecot logs user=<> when the client never offered a username. There is
+        # no mailbox to warn about; the IP-keyed signal still counts those failures.
+        if not account or is_service_identity(account):
             continue
         recent = account_totals(state, account, since, now)
         if recent["fail"] < cfg.locked_out.min_failures:
@@ -82,34 +89,35 @@ def locked_out_alerts(state: dict, cfg: Config, now: datetime) -> List[Alert]:
 
 
 def abnormal_sending_alerts(state: dict, cfg: Config, now: datetime) -> List[Alert]:
-    hour = hour_key(now - timedelta(hours=1))  # the hour that just closed
     history = history_hours(state, now)
     out = []
-    for account, rec in sorted(sends_for_hour(state, hour).items()):
-        if is_service_identity(account):
-            continue
-        thresholds = cfg.sending_for(account)
-        mean = hourly_mean(state, account, hour, BASELINE_HOURS)
-        rule = None
-        threshold = float(thresholds.ceiling_per_hour)
-        if rec["count"] > thresholds.ceiling_per_hour:
-            rule = "ceiling"
-        elif (history >= thresholds.baseline_min_hours and mean >= thresholds.baseline_floor
-              and rec["count"] > thresholds.baseline_multiplier * mean):
-            rule, threshold = "baseline", thresholds.baseline_multiplier * mean
-        if rule is None:
-            continue
-        out.append(Alert("abnormal_sending", "critical", account, rec["count"], {
-            "hour": hour, "rule": rule, "threshold": threshold, "mean_7d": mean,
-            "top_ips": _top(rec["ips"], 3),
-        }, "abnormal_sending:%s:%s" % (account, hour)))
+    for back in range(1, LOOKBACK_HOURS + 1):
+        hour = hour_key(now - timedelta(hours=back))
+        for account, rec in sorted(sends_for_hour(state, hour).items()):
+            if not account or is_service_identity(account):
+                continue
+            thresholds = cfg.sending_for(account)
+            mean = hourly_mean(state, account, hour, BASELINE_HOURS)
+            rule = None
+            threshold = float(thresholds.ceiling_per_hour)
+            if rec["count"] > thresholds.ceiling_per_hour:
+                rule = "ceiling"
+            elif (history >= thresholds.baseline_min_hours and mean >= thresholds.baseline_floor
+                  and rec["count"] > thresholds.baseline_multiplier * mean):
+                rule, threshold = "baseline", thresholds.baseline_multiplier * mean
+            if rule is None:
+                continue
+            out.append(Alert("abnormal_sending", "critical", account, rec["count"], {
+                "hour": hour, "rule": rule, "threshold": threshold, "mean_7d": mean,
+                "top_ips": _top(rec["ips"], 3),
+            }, "abnormal_sending:%s:%s" % (account, hour)))
     return out
 
 
 def evaluate(state: dict, cfg: Config, now: datetime) -> List[Alert]:
     alerts = abnormal_sending_alerts(state, cfg, now) + brute_force_alerts(state, cfg, now) \
         + locked_out_alerts(state, cfg, now)
-    alerts.sort(key=lambda a: (SEVERITY_ORDER.index(a.severity), a.subject))
+    alerts.sort(key=lambda a: (SEVERITY_ORDER.index(a.severity), a.subject, a.key))
     return alerts
 
 
