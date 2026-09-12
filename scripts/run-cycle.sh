@@ -22,9 +22,20 @@ rc=$?
 set -e
 
 if [ -s "$HEARTBEAT_URL_FILE" ]; then
-    # -f turns an HTTP error into a non-zero exit and -sS prints it, so a typo in
-    # the URL or blocked egress shows up as cron output instead of silence.
-    curl -fsS -m 10 "$(cat "$HEARTBEAT_URL_FILE")/$rc" > /dev/null || true
+    url=$(head -n 1 "$HEARTBEAT_URL_FILE")
+    if [ -n "$url" ]; then
+        # The URL is the credential: whoever knows it can forge the heartbeat.
+        # An argument to curl is world readable in /proc/<pid>/cmdline for as
+        # long as the request lasts, which on this schedule is a ten second
+        # window every quarter of an hour for every local account on a shared
+        # mail server. -K - reads the same setting from standard input, which
+        # is not published anywhere.
+        #
+        # -f turns an HTTP error into a non-zero exit and -sS prints it, so a
+        # typo in the URL or blocked egress shows up as cron output instead of
+        # silence. The ping must never change what cron sees, hence || true.
+        printf 'url = "%s/%s"\n' "$url" "$rc" | curl -fsS -m 10 -K - > /dev/null || true
+    fi
 fi
 
 exit "$rc"

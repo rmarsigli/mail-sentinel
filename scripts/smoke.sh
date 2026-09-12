@@ -40,6 +40,7 @@ STUB
 cat > "$stub/curl" <<'STUB'
 #!/bin/sh
 for arg in "$@"; do case "$arg" in http*) printf '%s\n' "$arg" >> "$CURL_LOG";; esac; done
+sed -n 's/^url = "\(.*\)"$/\1/p' >> "$CURL_LOG"
 STUB
 chmod +x "$stub/fake-python" "$stub/curl"
 
