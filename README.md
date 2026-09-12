@@ -20,7 +20,9 @@ It only reads and only alerts. It never blocks an IP, never suspends a mailbox, 
 
 Alerts leave through a transactional email API (Brevo or Resend) over HTTPS, not through the local Exim. That is deliberate: the day the mail server breaks is exactly the day the warning about it has to arrive anyway.
 
-Nothing from your users' mail is read, stored or sent. Message subjects, bodies and recipients are never parsed beyond the account name, IP, timestamp and message count that an alert needs.
+Nothing from your users' mail is read, stored or sent. Message subjects, bodies and recipients are never parsed beyond the account name, IP, timestamp and message count that an alert needs. The account names and IPs that do appear in an alert leave the server, through the provider you configured: if that matters to your data policy, it belongs in the contract with them.
+
+Three blind spots worth knowing. Mail injected locally by PHP `mail()` or `sendmail` is not counted, so a compromised website sending spam through the web stack does not trip the sending signal. Password spraying, one or two attempts against many accounts from many addresses, reaches no threshold by design. And the tool watches only the mail logs: it says nothing about the web, SSH or FTP.
 
 ## What an alert looks like
 
@@ -51,7 +53,10 @@ Repeats are suppressed. The same brute-forcing IP or the same locked-out account
 
 ## Requirements
 
-- cPanel with Dovecot 2.3 or newer and Exim. Tested on cPanel 134, AlmaLinux 9, Dovecot 2.4, Exim 4.99.
+- cPanel with Dovecot 2.4 and Exim. Tested on cPanel 134, AlmaLinux 9, Dovecot 2.4, Exim 4.99. The Dovecot
+  parser reads the 2.4 wording (`Logged in:`, `Login aborted:`); on 2.3 those lines are counted as ignored.
+- Exim with `log_selector` including `+incoming_port`, which cPanel sets by default. Without it the send
+  lines carry no port and the abnormal sending signal sees nothing.
 - Python 3.9 or newer at `/usr/bin/python3`. Nothing from pip.
 - Outbound HTTPS to `api.brevo.com` or `api.resend.com`.
 - A Brevo or Resend account, an API key, and a sender address on a domain verified with that provider.
@@ -89,12 +94,14 @@ An alert goes to the recipient list of its own severity. There is no cascade to 
 
 ```
 mail-sentinel.py run                 one cycle: read, evaluate, deduplicate, send
-mail-sentinel.py run --dry-run       print the alerts that would be sent, send nothing, save nothing
+mail-sentinel.py run --dry-run       print the alerts that would be sent, send nothing, keep the state
 mail-sentinel.py test-delivery       send one message to every recipient and print the HTTP status
 mail-sentinel.py status              effective config with the key redacted, state age, last run summary
 ```
 
-Exit codes are part of the contract, because cron mails root on anything non-zero: 0 success, 1 config error, 2 log access error, 3 delivery failure.
+Exit codes are part of the contract: 0 success, 1 config error, 2 log access error, 3 delivery failure, 4 anything unexpected.
+
+cron does not mail on the exit code, it mails when the job writes something. So every failure also writes its line to stderr, and a clean cycle writes nothing at all. Set `MAILTO` in `/etc/cron.d/mail-sentinel` to an address someone actually reads.
 
 ## How it works
 
@@ -105,7 +112,7 @@ If delivery fails, nothing is marked as sent and the same alerts are evaluated a
 Every cycle appends one summary line to `/var/log/mail-sentinel.log`:
 
 ```
-run lines=10110 ignored=9273 future_dropped=0 rotated=0 events=login_fail:197,login_ok:650,send:8 raised=2 suppressed=0 sent=2 seconds=0.59 exit=0
+run lines=10110 ignored=9273 malformed=0 future_dropped=0 rotated=0 events=login_fail:197,login_ok:650,send:8 raised=2 suppressed=0 sent=2 seconds=0.59 exit=0
 ```
 
 A cycle over ten thousand log lines takes well under a second.
