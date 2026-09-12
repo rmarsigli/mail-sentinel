@@ -43,12 +43,23 @@ def load_state(path: str, now: datetime, quarantine: bool = True) -> Tuple[dict,
 
 def save_state(path: str, state: dict) -> None:
     tmp = path + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # Drop any leftover temporary first, then create it with O_EXCL|O_NOFOLLOW:
+    # together they guarantee we are writing to a regular file we just created,
+    # never through a symlink or hardlink somebody planted at that name. unlink
+    # itself never follows a symlink, and if the name is re-planted between the
+    # two calls the open fails instead of writing through it. fchmod works on
+    # the descriptor we own, so the umask cannot leave the file looser than 0600
+    # and no path lookup happens after the file exists.
+    try:
+        os.unlink(tmp)
+    except FileNotFoundError:
+        pass
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "w") as fh:
         json.dump(state, fh, separators=(",", ":"), sort_keys=True)
         fh.flush()
         os.fsync(fh.fileno())
-    os.chmod(tmp, 0o600)
+        os.fchmod(fh.fileno(), 0o600)
     os.replace(tmp, path)
 
 

@@ -32,7 +32,10 @@ STATE_DIR_MODE = 0o700
 def _log(cfg: Config, message: str, stream=None, error: bool = False) -> None:
     line = "%s %s\n" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), message)
     try:
-        fd = os.open(cfg.server.log_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND, LOG_MODE)
+        # O_NOFOLLOW: never append through a symlink planted at the log path.
+        # The resulting OSError is swallowed below like any other write failure.
+        fd = os.open(cfg.server.log_file,
+                     os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, LOG_MODE)
         with os.fdopen(fd, "a") as fh:
             fh.write(line)
     except OSError:
@@ -129,7 +132,9 @@ def run_cycle(cfg: Config, now: datetime, dry_run: bool, opener=None, sleep=time
 def _with_lock(cfg: Config, fn: Callable[[], int], stderr) -> int:
     os.makedirs(cfg.server.state_dir, mode=STATE_DIR_MODE, exist_ok=True)
     lock_path = os.path.join(cfg.server.state_dir, "lock")
-    lock_fd = os.open(lock_path, os.O_WRONLY | os.O_CREAT, 0o600)
+    # O_NOFOLLOW: a symlink at the lock path would let another user pick the
+    # file root opens; refusing to run is better than writing where told.
+    lock_fd = os.open(lock_path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     with os.fdopen(lock_fd, "w") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

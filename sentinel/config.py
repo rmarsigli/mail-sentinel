@@ -117,9 +117,16 @@ _OVERRIDABLE = {f.name for f in dataclasses.fields(SendingCfg)}
 
 
 def _check_mode_0600(path: str, what: str) -> None:
-    mode = stat.S_IMODE(os.stat(path).st_mode)
+    info = os.stat(path)
+    mode = stat.S_IMODE(info.st_mode)
     if mode & 0o077:
         raise ConfigError("%s %s must be mode 0600, is %04o" % (what, path, mode))
+    # Mode alone is not enough: 0600 owned by somebody else means that somebody
+    # else can rewrite the file we are about to trust.
+    uid = os.getuid()
+    if info.st_uid != uid:
+        raise ConfigError("%s %s must be owned by the user running mail-sentinel "
+                          "(uid %d), is owned by uid %d" % (what, path, uid, info.st_uid))
 
 
 def _coerce(field_type, raw: str, where: str):

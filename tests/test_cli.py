@@ -179,6 +179,31 @@ window_minutes = 15
         self.assertEqual(code, 4)
         self.assertIn("unhandled RuntimeError", self.err.getvalue())
 
+    def test_log_is_not_written_through_a_symlink_and_the_cycle_survives(self):
+        # A symlink where the log file goes must not be followed, and a log that
+        # cannot be written must never take the cycle down with it.
+        decoy = os.path.join(self.root, "decoy.log")
+        with open(decoy, "w") as fh:
+            fh.write("untouched\n")
+        os.symlink(decoy, self.log_file)
+        code = self.run_cli("run")
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.sent), 1)
+        with open(decoy) as fh:
+            self.assertEqual(fh.read(), "untouched\n")
+
+    def test_lock_is_not_opened_through_a_symlink(self):
+        decoy = os.path.join(self.root, "decoy.lock")
+        with open(decoy, "w") as fh:
+            fh.write("untouched")
+        os.makedirs(self.state_dir, mode=0o700, exist_ok=True)
+        os.symlink(decoy, os.path.join(self.state_dir, "lock"))
+        # Refusing to run is the safe outcome: exit 4 with the reason on stderr.
+        self.assertEqual(self.run_cli("run"), 4)
+        self.assertEqual(self.sent, [])
+        with open(decoy) as fh:
+            self.assertEqual(fh.read(), "untouched")
+
     def test_status_prints_config_without_key(self):
         out = io.StringIO()
         code = cli.main(["--config", self.config, "--no-permission-check", "status"], opener=self.opener, stdout=out)

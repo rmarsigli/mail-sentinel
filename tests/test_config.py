@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 from sentinel.config import ConfigError, load_config
 
@@ -107,6 +108,39 @@ class LoadConfigTest(unittest.TestCase):
         os.chmod(path, 0o644)
         with self.assertRaises(ConfigError):
             load_config(path, check_permissions=True)
+
+    def test_files_owned_by_the_running_user_are_accepted(self):
+        path = write(self.tmp.name, MINIMAL.format(key=self.key))
+        os.chmod(path, 0o600)
+        cfg = load_config(path, check_permissions=True)
+        self.assertEqual(cfg.server.name, "mx1.example.com")
+
+    def test_file_owned_by_another_user_is_rejected(self):
+        # chown needs root, so the other-owner case is proved by moving the
+        # running uid instead: same stat, same comparison, no privileges needed.
+        path = write(self.tmp.name, MINIMAL.format(key=self.key))
+        os.chmod(path, 0o600)
+        with mock.patch("os.getuid", return_value=os.getuid() + 1):
+            with self.assertRaises(ConfigError) as ctx:
+                load_config(path, check_permissions=True)
+        self.assertIn("owned by", str(ctx.exception))
+        self.assertIn("config file", str(ctx.exception))
+
+    def test_api_key_owned_by_another_user_is_rejected(self):
+        path = write(self.tmp.name, MINIMAL.format(key=self.key))
+        os.chmod(path, 0o600)
+        real_stat, key = os.stat, self.key
+
+        def stat_with_foreign_key(target, *args, **kwargs):
+            info = real_stat(target, *args, **kwargs)
+            if target == key:
+                return os.stat_result(tuple(info)[:4] + (info.st_uid + 1,) + tuple(info)[5:])
+            return info
+
+        with mock.patch("os.stat", side_effect=stat_with_foreign_key):
+            with self.assertRaises(ConfigError) as ctx:
+                load_config(path, check_permissions=True)
+        self.assertIn("api key file", str(ctx.exception))
 
     def test_overrides_apply_to_sending_only(self):
         text = MINIMAL.format(key=self.key) + "\n[overrides]\nnews@example.com = ceiling_per_hour=2000, baseline_multiplier=10\n"

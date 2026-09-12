@@ -3,6 +3,7 @@ import stat
 import tempfile
 import unittest
 from datetime import datetime, timedelta
+from unittest import mock
 
 from sentinel.state import (empty_state, history_hours, is_suppressed, load_state, mark_sent,
                             prune_sent, save_state)
@@ -44,6 +45,33 @@ class StateFileTest(unittest.TestCase):
     def test_save_is_atomic_no_tmp_left_behind(self):
         save_state(self.path, empty_state(NOW))
         self.assertEqual(sorted(os.listdir(self.tmp.name)), ["state.json"])
+
+    def test_save_does_not_write_through_a_planted_symlink(self):
+        # A symlink at state.json.tmp is how another user would try to make root
+        # write where they want. The link is removed, never followed.
+        decoy = os.path.join(self.tmp.name, "decoy")
+        with open(decoy, "w") as fh:
+            fh.write("untouched")
+        os.symlink(decoy, self.path + ".tmp")
+        save_state(self.path, empty_state(NOW))
+        with open(decoy) as fh:
+            self.assertEqual(fh.read(), "untouched")
+        self.assertFalse(os.path.lexists(self.path + ".tmp"))
+        self.assertEqual(load_state(self.path, NOW)[0], empty_state(NOW))
+
+    def test_save_fails_instead_of_following_a_symlink_replanted_after_unlink(self):
+        # The race the O_EXCL|O_NOFOLLOW open closes: the name is a symlink again
+        # by the time we open it. Simulated by stopping the unlink from landing.
+        decoy = os.path.join(self.tmp.name, "decoy")
+        with open(decoy, "w") as fh:
+            fh.write("untouched")
+        os.symlink(decoy, self.path + ".tmp")
+        with mock.patch("os.unlink"):
+            with self.assertRaises(OSError):
+                save_state(self.path, empty_state(NOW))
+        with open(decoy) as fh:
+            self.assertEqual(fh.read(), "untouched")
+        self.assertFalse(os.path.exists(self.path))
 
 
 class HistoryTest(unittest.TestCase):
